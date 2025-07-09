@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai import AzureOpenAI
 import json
 import os
 import requests
@@ -76,15 +77,23 @@ tools = [{"type": "function", "function": record_user_details_json},
 class Me:
 
     def __init__(self):
-        self.openai = OpenAI()
+        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.azure_client = AzureOpenAI(
+            api_key=self.openai_api_key,
+            api_version="2025-01-01-preview",  # << Wichtig hier
+            azure_endpoint="https://ai-initiative-azure-openai.openai.azure.com/openai/deployments/gpt-4o-2/chat/completions?api-version=2025-01-01-preview"
+        )
         self.name = "Ed Donner"
-        reader = PdfReader("me/linkedin.pdf")
+        base_dir = os.path.dirname(__file__)
+        pdf_path = os.path.join(base_dir, "me", "linkedin.pdf")
+        self.reader = PdfReader(pdf_path)
         self.linkedin = ""
-        for page in reader.pages:
+        for page in self.reader.pages:
             text = page.extract_text()
             if text:
                 self.linkedin += text
-        with open("me/summary.txt", "r", encoding="utf-8") as f:
+        summary_path = os.path.join(base_dir, "me", "summary.txt")
+        with open(summary_path, "r", encoding="utf-8") as f:
             self.summary = f.read()
 
 
@@ -116,7 +125,11 @@ If the user is engaging in discussion, try to steer them towards getting in touc
         messages = [{"role": "system", "content": self.system_prompt()}] + history + [{"role": "user", "content": message}]
         done = False
         while not done:
-            response = self.openai.chat.completions.create(model="gpt-4o-mini", messages=messages, tools=tools)
+            response = self.azure_client.chat.completions.create(
+                model="gpt-4o-2",
+                messages=messages,
+                tools=tools  # type: ignore
+            )
             if response.choices[0].finish_reason=="tool_calls":
                 message = response.choices[0].message
                 tool_calls = message.tool_calls
